@@ -1,98 +1,61 @@
-# ComfyUI Novel Director ”9Á0
+# ComfyUI Novel Director ðŸŽ¬
 
-**Novel Director** ÊÇÒ»¸ö×¨Îª AI ¹ÊÊÂ/Âþ»­Éú³ÉÉè¼ÆµÄ ComfyUI ²å¼þ¡£ËüÍ¨¹ý½âÎö JSON ¾ç±¾£¬×Ô¶¯µ÷¶È¶à½ÇÉ«µÄ²Î¿¼Í¼£¨Reference Images£©ºÍÌáÊ¾´Ê£¬ÍêÃÀ½â¾ö¶àÈËÎï³¡¾°ÏÂµÄ IPAdapter ×Ô¶¯»¯¿ØÖÆÎÊÌâ¡£
+**Novel Director** æ˜¯ä¸€ä¸ªä¸“ä¸º AI æ•…äº‹/æ¼«ç”»ç”Ÿæˆè®¾è®¡çš„ ComfyUI æ’ä»¶ã€‚å®ƒé€šè¿‡è§£æž JSON å‰§æœ¬ï¼Œè‡ªåŠ¨è°ƒåº¦å¤šè§’è‰²çš„å‚è€ƒå›¾ï¼ˆReference Imagesï¼‰å’Œæç¤ºè¯ï¼Œå®Œç¾Žè§£å†³å¤šäººç‰©åœºæ™¯ä¸‹çš„è‡ªåŠ¨åŒ–æŽ§åˆ¶é—®é¢˜ã€‚
 
-## 7¿8 ºËÐÄ¹¦ÄÜ
+## âœ¨ æ ¸å¿ƒåŠŸèƒ½
 
-1.  **ÖÇÄÜ¾ç±¾½âÎö**£ºÖ§³ÖÍ¨¹ý JSON ¶¨Òå½ÇÉ«¿âºÍ·Ö¾µ±í£¬×Ô¶¯Æ¥Åä½ÇÉ«Ãû³Æ¡£
-2.  **¶à½ÇÉ«µ÷¶È**£º×Ô¶¯Ê¶±ðµ¥ÈË/Ë«ÈË³¡¾°£¬·Ö±ðÊä³öÖ÷½Ç£¨A£©ºÍÅä½Ç£¨B£©µÄ²Î¿¼Í¼Ë÷Òý¡£
-3.  **¶¯Ì¬ÕÚÕÖÂß¼­ (Dynamic Masking)**£º
-    *   µ±·Ö¾µÖÐÖ»ÓÐÒ»¸öÈËÊ±£¬Åä½ÇÍ¨µÀ»á×Ô¶¯Éú³É**È«ºÚÕÚÕÖ**£¬³¹µ×¹Ø±Õ¶ÔÓ¦µÄ IPAdapter/ControlNet Ó°Ïì£¬·ÀÖ¹»­Ãæ±À»µ¡£
-    *   µ±·Ö¾µÖÐÁ½ÈË¶¼ÔÚÊ±£¬Éú³ÉÈ«°×ÕÚÕÖ£¬¼¤»î IPAdapter¡£
-4.  **Batch ÅúÁ¿´¦Àí**£ºÍêÃÀÖ§³Ö ComfyUI µÄ Batch ÁÐ±íÄ£Ê½£¬Ò»´ÎÉú³ÉÕû±¾·Ö¾µ¡£
+1.  **æ™ºèƒ½å‰§æœ¬è§£æž**ï¼šæ”¯æŒé€šè¿‡ JSON å®šä¹‰è§’è‰²åº“å’Œåˆ†é•œè¡¨ï¼Œè‡ªåŠ¨åŒ¹é…è§’è‰²åç§°ã€‚
+2.  **å¤šè§’è‰²è°ƒåº¦**ï¼šè‡ªåŠ¨è¯†åˆ«å•äºº/åŒäººåœºæ™¯ï¼Œåˆ†åˆ«è¾“å‡ºä¸»è§’ï¼ˆAï¼‰å’Œé…è§’ï¼ˆBï¼‰çš„å‚è€ƒå›¾ç´¢å¼•ã€‚
+3. **Batch æ‰¹é‡å¤„ç†**ï¼šå®Œç¾Žæ”¯æŒ ComfyUI çš„ Batch åˆ—è¡¨æ¨¡å¼ï¼Œä¸€æ¬¡ç”Ÿæˆæ•´æœ¬åˆ†é•œã€‚
 
-## ”9à3 °²×°·½·¨
+## ðŸ“¥ å®‰è£…æ–¹æ³•
 
-½øÈëÄãµÄ ComfyUI ²å¼þÄ¿Â¼£º
+è¿›å…¥ä½ çš„ ComfyUI æ’ä»¶ç›®å½•ï¼š
 ```bash
 cd ComfyUI/custom_nodes/
-git clone https://github.com/ÄãµÄÓÃ»§Ãû/ComfyUI-Novel-Director.git
+git clone https://github.com/ä½ çš„ç”¨æˆ·å/ComfyUI-Novel-Director.git
 
-ÖØÆô ComfyUI ¼´¿É¡£
+é‡å¯ ComfyUI å³å¯ã€‚
 
-”9ß5 ¾ç±¾ JSON ¸ñÊ½
+ðŸ“ å‰§æœ¬ JSON æ ¼å¼
 
-ÔÚ¡°¾ç±¾JSON½âÎöÆ÷¡±½ÚµãÖÐÌîÈëÈçÏÂ¸ñÊ½µÄÊý¾Ý£º
+æä¾›ä¸¤ä¸ªå‰§æœ¬ï¼ˆéœ€è¦æŽ¥åˆQWEN-TTSä¸€èµ·ä½¿ç”¨ï¼‰
 
-code
-JSON
-download
-content_copy
-expand_less
-{
-  "character_list": [
-    {
-      "name": "Alice",
-      "prompt": "1girl, blonde hair, blue eyes, white dress",
-      "ref_image_index": 0 
-      // ¶ÔÓ¦ÉÏ´«µÄ½ÇÉ«Í¼ Batch ÖÐµÄµÚ 0 ÕÅ
-    },
-    {
-      "name": "Bob",
-      "prompt": "1boy, black hair, hoodie",
-      "ref_image_index": 1
-      // ¶ÔÓ¦ÉÏ´«µÄ½ÇÉ«Í¼ Batch ÖÐµÄµÚ 1 ÕÅ
-    }
-  ],
-  "storyboard_list": [
-    {
-      "prompt": "Alice is eating an apple under a tree.",
-      "main_character": "Alice" 
-      // Ö»Ð´ Alice£¬Åä½ÇÍ¨µÀ»á×Ô¶¯Êä³öÈ«ºÚÕÚÕÖ
-    },
-    {
-      "prompt": "Alice and Bob are talking closely.",
-      "main_character": ["Alice", "Bob"]
-      // Í¬Ê±Ê¶±ðÁ½ÈË£¬ÌáÈ¡Æ÷AÊä³öAliceÍ¼£¬ÌáÈ¡Æ÷BÊä³öBobÍ¼
-    },
-    {
-      "prompt": "A landscape of a city, empty street.",
-      "main_character": "None"
-      // ÎÞÈË³¡¾°£¬Á½¸öÍ¨µÀ¾ùÊ§Ð§
-    }
-  ]
-}
-”9ä2 ½ÚµãÁ¬½ÓÖ¸ÄÏ (Workflow)
-1. »ù´¡×¼±¸
+1.å°è¯´è‡ªåŠ¨è½¬è§’è‰²éŸ³è‰²ã€å°è¯æ¨¡æ¿
+2.å°è¯è½¬äººè®¾ã€åˆ†é•œå›¾æ¨¡æ¿
 
-Load Image Batch: ¼ÓÔØÒ»ÕÅ°üº¬ËùÓÐ½ÇÉ«²Î¿¼Í¼µÄ´óÍ¼£¨»òÍ¨¹ý Batch ½ÚµãºÏ²¢£©£¬°´Ë³ÐòÅÅÁÐ£¨0: Alice, 1: Bob...£©¡£
+ðŸ”Œ èŠ‚ç‚¹è¿žæŽ¥æŒ‡å— (Workflow)
+1. åŸºç¡€å‡†å¤‡
 
-JSON Script: ÌîÈëÉÏÃæµÄ JSON¡£
+Load Image Batch: åŠ è½½ä¸€å¼ åŒ…å«æ‰€æœ‰è§’è‰²å‚è€ƒå›¾çš„å¤§å›¾ï¼ˆæˆ–é€šè¿‡ Batch èŠ‚ç‚¹åˆå¹¶ï¼‰ï¼ŒæŒ‰é¡ºåºæŽ’åˆ—ï¼ˆ0: Alice, 1: Bob...ï¼‰ã€‚
 
-2. Á¬½ÓÂß¼­
+JSON Script: å¡«å…¥ä¸Šé¢çš„ JSONã€‚
 
-¸Ã²å¼þ°üº¬Èý¸öºËÐÄ½Úµã£º
+2. è¿žæŽ¥é€»è¾‘
 
-¾ç±¾JSON½âÎöÆ÷ (Novel)
+è¯¥æ’ä»¶åŒ…å«ä¸‰ä¸ªæ ¸å¿ƒèŠ‚ç‚¹ï¼š
 
-ÊäÈë£ºJSON ×Ö·û´®
+å‰§æœ¬JSONè§£æžå™¨ (Novel)
 
-Êä³ö£ºÌáÊ¾´Ê¡¢Ö÷½ÇË÷Òý(A)¡¢Åä½ÇË÷Òý(B)
+è¾“å…¥ï¼šJSON å­—ç¬¦ä¸²
 
-°´Ë÷ÒýÌáÈ¡²Î¿¼Í¼ (Novel) (Ðè¸´ÖÆÁ½·Ý)
+è¾“å‡ºï¼šæç¤ºè¯ã€ä¸»è§’ç´¢å¼•(A)ã€é…è§’ç´¢å¼•(B)
 
-ÌáÈ¡Æ÷ A: Á¬½Ó Ö÷½ÇË÷Òý(A) -> Êä³öÍ¼Æ¬¸ø IPAdapter A (image)¡£
+æŒ‰ç´¢å¼•æå–å‚è€ƒå›¾ (Novel) (éœ€å¤åˆ¶ä¸¤ä»½)
 
-ÌáÈ¡Æ÷ B: Á¬½Ó Åä½ÇË÷Òý(B) -> Êä³öÍ¼Æ¬¸ø IPAdapter B (image)¡£
+æå–å™¨ A: è¿žæŽ¥ ä¸»è§’ç´¢å¼•(A) -> è¾“å‡ºå›¾ç‰‡ç»™ IPAdapter A (image)ã€‚
 
-Éú³É½ÇÉ«´æÔÚÕÚÕÖ (Novel) (¹Ø¼ü!)
+æå–å™¨ B: è¿žæŽ¥ é…è§’ç´¢å¼•(B) -> è¾“å‡ºå›¾ç‰‡ç»™ IPAdapter B (image)ã€‚
 
-Á¬½Ó Åä½ÇË÷Òý(B) ºÍ ÌáÈ¡Æ÷BµÄÍ¼Æ¬£¨ÓÃÓÚÈ¡³ß´ç£©¡£
+ç”Ÿæˆè§’è‰²å­˜åœ¨é®ç½© (Novel) (å…³é”®!)
 
-Êä³ö Mask: Á¬½Óµ½ IPAdapter B µÄ attention_mask (»ò mask ÊäÈë)¡£
+è¿žæŽ¥ é…è§’ç´¢å¼•(B) å’Œ æå–å™¨Bçš„å›¾ç‰‡ï¼ˆç”¨äºŽå–å°ºå¯¸ï¼‰ã€‚
 
-×÷ÓÃ£ºµ±Ö»ÓÐ Alice Ê±£¬Bob µÄ IPAdapter »áÊÕµ½È«ºÚ Mask£¬´Ó¶ø²»²úÉúÈÎºÎ¸ÉÈÅ¡£
+è¾“å‡º Mask: è¿žæŽ¥åˆ° IPAdapter B çš„ attention_mask (æˆ– mask è¾“å…¥)ã€‚
 
-•0•0„1‚5 Credits
+ä½œç”¨ï¼šå½“åªæœ‰ Alice æ—¶ï¼ŒBob çš„ IPAdapter ä¼šæ”¶åˆ°å…¨é»‘ Maskï¼Œä»Žè€Œä¸äº§ç”Ÿä»»ä½•å¹²æ‰°ã€‚
+
+ðŸ› ï¸ Credits
+
 
 
