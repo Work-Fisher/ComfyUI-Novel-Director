@@ -13,7 +13,7 @@
 进入你的 ComfyUI 插件目录：
 ```bash
 cd ComfyUI/custom_nodes/
-git clone https://github.com/你的用户名/ComfyUI-Novel-Director.git
+git clone https://github.com/Work-Fisher/ComfyUI-Novel-Director.git
 
 重启 ComfyUI 即可。
 
@@ -56,6 +56,7 @@ JSON Script: 填入上面的 JSON。
 作用：当只有 Alice 时，Bob 的 IPAdapter 会收到全黑 Mask，从而不产生任何干扰。
 
 🛠️ Credits
+
 
 
 
