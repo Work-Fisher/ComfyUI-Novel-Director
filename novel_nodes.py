@@ -50,7 +50,7 @@ class DirectorCasting:
         return (cast,)
 
 # ==========================================
-# 2A. 剧本加载 (Audio Script) - 原始列表输出版
+# 2A. 剧本加载 (Audio Script) - 极简格式版
 # ==========================================
 class DirectorAudioScriptLoader:
     @classmethod
@@ -61,9 +61,8 @@ class DirectorAudioScriptLoader:
             }
         }
     
-    # role_desc_str 现在输出的是原始列表字符串
     RETURN_TYPES = ("STRING", "STRING", "STRING", "INT", "INT", "DICT", "STRING")
-    RETURN_NAMES = ("角色列表(Role)", "音色提示词(Instruct)", "纯台词(Text)", "总场数", "索引列表(Loop)", "角色字典(Dict)", "角色设定详情(ListString)")
+    RETURN_NAMES = ("角色列表(Role)", "音色提示词(Instruct)", "纯台词(Text)", "总场数", "索引列表(Loop)", "角色字典(Dict)", "角色设定详情(String)")
     OUTPUT_IS_LIST = (True, True, True, False, True, False, False)
     
     FUNCTION = "parse_audio_script"
@@ -78,24 +77,21 @@ class DirectorAudioScriptLoader:
             data = json.loads(clean)
         except Exception as e:
             print(f"❌ JSON Parse Error: {e}")
-            return (["Err"], ["Err"], ["JSON Error"], 1, [0], {}, "[]")
+            return (["Err"], ["Err"], ["JSON Error"], 1, [0], {}, "JSON解析失败")
 
-        # 1. 获取原始角色列表数据
         role_list_data = data.get("role_list", [])
-        
-        # 💡 这里修改为直接输出 Python 列表的字符串形式
-        # 例如: "[{'name': '旁白', 'instruct': '...', 'text': '...'}]"
-        # 使用 str() 会生成单引号格式，正好符合你的需求
-        role_desc_str = str(role_list_data)
-
-        # 2. 建立映射表供后续处理使用
         role_map = {} 
+        role_desc_str = "" 
+        
         for r in role_list_data:
             r_name = r.get("name", "").strip()
             r_inst = r.get("instruct", "")
-            if r_name: role_map[r_name] = r_inst
+            r_text = r.get("text", "") 
+            
+            if r_name: 
+                role_map[r_name] = r_inst
+                role_desc_str += f"角色：{r_name} 音色：{r_inst} 样本：{r_text}\n"
         
-        # 3. 解析剧本正文
         juben_text = data.get("juben", "")
         raw_lines = [l.strip() for l in juben_text.split('\n') if l.strip()]
 
@@ -119,7 +115,7 @@ class DirectorAudioScriptLoader:
 
         count = len(out_texts)
         if count == 0:
-            return (["Empty"], ["Empty"], ["No Content"], 1, [0], {}, "[]")
+            return (["Empty"], ["Empty"], ["No Content"], 1, [0], {}, "无内容")
             
         print(f"🎙️ [Script] 解析成功: {count} 行 | 角色库: {len(role_map)} 人")
         return (out_roles, out_instructs, out_texts, count, list(range(count)), role_map, role_desc_str)
@@ -175,6 +171,42 @@ class DirectorVisualStoryboardLoader:
         return (prompt_list, img1_list, img2_list)
 
 # ==========================================
+# 2C. 视频提示词加载 (Video Prompt Loader)
+# ==========================================
+class DirectorVideoPromptLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "video_json": ("STRING", {"multiline": True, "forceInput": True, "default": ""}),
+            }
+        }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("视频运镜列表(Video Prompts)",)
+    OUTPUT_IS_LIST = (True,)
+    FUNCTION = "parse_video_prompt"
+    CATEGORY = "Novel Director/1. Pre-Production"
+
+    def parse_video_prompt(self, video_json):
+        raw = video_json[0] if isinstance(video_json, list) else video_json
+        try:
+            match = re.search(r"\{.*\}", raw, re.DOTALL)
+            clean = match.group(0).replace("```json", "").replace("```", "") if match else raw
+            clean = clean.replace("\\\n", "\\n")
+            data = json.loads(clean)
+        except Exception as e:
+            print(f"❌ Video JSON Error: {e}")
+            return (["Slow motion"],)
+
+        prompts = data.get("video_prompts", data.get("prompts", []))
+        if not isinstance(prompts, list): prompts = ["High quality motion"]
+        final_list = [str(p).strip() for p in prompts if p]
+        if not final_list: final_list = ["Static camera"]
+        
+        print(f"🎥 [VideoLoader] Loaded {len(final_list)} motion prompts")
+        return (final_list,)
+
+# ==========================================
 # 3. 场景处理器 (Iterator)
 # ==========================================
 class DirectorSceneIterator:
@@ -187,24 +219,26 @@ class DirectorSceneIterator:
                 "instruct_list": ("STRING", {"forceInput": True}),
                 "text_list": ("STRING", {"forceInput": True}),
                 "visual_prompts": ("STRING", {"forceInput": True}),
+                "video_prompts": ("STRING", {"forceInput": True}), # 新增
                 "char_img1_list": ("IMAGE", ),
                 "char_img2_list": ("IMAGE", ),
             }
         }
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "IMAGE", "IMAGE", "STRING", "INT", "INT")
-    RETURN_NAMES = ("当前Role", "Instruct(含Role)", "Text(含Role)", "当前画面Prompt", "Img1", "Img2", "Filename", "Idx_Current", "Idx_Total")
-    INPUT_IS_LIST = (True, True, True, True, True, True, True)
-    OUTPUT_IS_LIST = (True, True, True, True, True, True, True, True, True)
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "IMAGE", "IMAGE", "STRING", "INT", "INT")
+    RETURN_NAMES = ("当前Role", "Instruct(含Role)", "Text(含Role)", "当前画面Prompt", "当前视频运镜", "Img1", "Img2", "Filename", "Idx_Current", "Idx_Total")
+    INPUT_IS_LIST = (True, True, True, True, True, True, True, True)
+    OUTPUT_IS_LIST = (True, True, True, True, True, True, True, True, True, True)
     FUNCTION = "process"
     CATEGORY = "Novel Director/2. Production"
 
-    def process(self, scene_index, role_list, instruct_list, text_list, visual_prompts, char_img1_list, char_img2_list):
+    def process(self, scene_index, role_list, instruct_list, text_list, visual_prompts, video_prompts, char_img1_list, char_img2_list):
         def to_list(x): return x if isinstance(x, list) else [x]
-        indices, roles, instructs, texts, prompts = to_list(scene_index), to_list(role_list), to_list(instruct_list), to_list(text_list), to_list(visual_prompts)
+        indices, roles, instructs, texts = to_list(scene_index), to_list(role_list), to_list(instruct_list), to_list(text_list)
+        vis_prompts, vid_prompts = to_list(visual_prompts), to_list(video_prompts)
         imgs1 = char_img1_list if isinstance(char_img1_list, list) else [char_img1_list]
         imgs2 = char_img2_list if isinstance(char_img2_list, list) else [char_img2_list]
         
-        o_role, o_inst, o_txt, o_prm = [], [], [], []
+        o_role, o_inst, o_txt, o_vis, o_vid = [], [], [], [], []
         o_i1, o_i2, o_fn, o_idx, o_tot = [], [], [], [], []
         
         num_texts = len(texts)
@@ -213,7 +247,8 @@ class DirectorSceneIterator:
         for i in indices:
             idx = int(i)
             t_idx = idx if idx < num_texts else -1
-            v_idx = idx % len(prompts) if len(prompts) > 0 else 0
+            vis_idx = idx % len(vis_prompts) if len(vis_prompts) > 0 else 0
+            vid_idx = idx % len(vid_prompts) if len(vid_prompts) > 0 else 0
             im1_idx = idx % len(imgs1) if len(imgs1) > 0 else 0
             im2_idx = idx % len(imgs2) if len(imgs2) > 0 else 0
             
@@ -224,7 +259,8 @@ class DirectorSceneIterator:
             o_role.append(raw_role)
             o_inst.append(final_inst)
             o_txt.append(final_text)
-            o_prm.append(prompts[v_idx])
+            o_vis.append(vis_prompts[vis_idx])
+            o_vid.append(vid_prompts[vid_idx])
             o_i1.append(imgs1[im1_idx])
             o_i2.append(imgs2[im2_idx])
             o_fn.append(f"Scene_{idx:03d}")
@@ -232,10 +268,10 @@ class DirectorSceneIterator:
             o_tot.append(num_total)
 
         print(f"🔄 [Processor] Batch {num_total} Ready.")
-        return (o_role, o_inst, o_txt, o_prm, o_i1, o_i2, o_fn, o_idx, o_tot)
+        return (o_role, o_inst, o_txt, o_vis, o_vid, o_i1, o_i2, o_fn, o_idx, o_tot)
 
 # ==========================================
-# 3B. 时长计算器
+# 3B. 时长计算器 (含缓冲帧)
 # ==========================================
 class DirectorAudioFrameCalc:
     @classmethod
@@ -245,6 +281,7 @@ class DirectorAudioFrameCalc:
                 "audio": ("*", ), 
                 "fps": ("INT", {"default": 24}),
                 "min_frames": ("INT", {"default": 16}),
+                "buffer_frames": ("INT", {"default": 16, "min": 0, "max": 120}),
             }
         }
     RETURN_TYPES = ("INT", "STRING")
@@ -252,7 +289,7 @@ class DirectorAudioFrameCalc:
     FUNCTION = "calc"
     CATEGORY = "Novel Director/2. Production"
 
-    def calc(self, audio, fps, min_frames):
+    def calc(self, audio, fps, min_frames, buffer_frames):
         aud = audio[0] if isinstance(audio, list) else audio
         dur = 5.0
         if isinstance(aud, str) and os.path.exists(aud):
@@ -263,9 +300,9 @@ class DirectorAudioFrameCalc:
             if w.dim()==3: w=w.squeeze(0)
             dur = w.shape[-1] / aud['sample_rate']
         
-        frames = int(dur * fps)
-        final_frames = max(frames, min_frames)
-        return (final_frames, f"🎞️ {final_frames} frames ({dur:.2f}s) | FPS:{fps}")
+        base_frames = int(dur * fps)
+        final_frames = max(base_frames, min_frames) + buffer_frames
+        return (final_frames, f"🎞️ {final_frames} frames ({dur:.2f}s + buf) | FPS:{fps}")
 
 # ==========================================
 # 4A. 红绿灯
@@ -323,7 +360,6 @@ class DirectorStreamSaver:
         ts = int(time.time() * 1000)
         temp_audio = os.path.join(out_dir, f"temp_{ts}.wav")
         audio_ready = False
-        
         try:
             if isinstance(curr_audio, str) and os.path.exists(curr_audio):
                 data, sr = sf.read(curr_audio)
@@ -343,7 +379,7 @@ class DirectorStreamSaver:
             clip = ImageSequenceClip(frames, fps=fps)
             if audio_ready:
                 au_clip = AudioFileClip(temp_audio)
-                clip = clip.set_audio(au_clip.set_duration(clip.duration))
+                clip = clip.set_audio(au_clip)
             clip.write_videofile(full_path, fps=fps, codec="libx264", audio_codec="aac", preset="ultrafast", logger=None)
             print(f"💾 Scene {curr_idx} Saved")
         except Exception as e:
@@ -355,7 +391,7 @@ class DirectorStreamSaver:
         return (manifest_path,)
 
 # ==========================================
-# 5. 最终合并
+# 5. 最终合并 (Final Render)
 # ==========================================
 class DirectorFinalRender:
     @classmethod
@@ -389,8 +425,13 @@ class DirectorFinalRender:
                 final = concatenate_videoclips(clips, method="compose")
                 final.write_videofile(final_path, fps=24, codec="libx264", audio_codec="aac", logger=None)
                 
-                frames = []
-                for frame in final.iter_frames(): frames.append(frame)
+                # 内存保护：只加载 60 秒以内的视频预览
+                if final.duration > 60:
+                    frame = final.get_frame(0)
+                    frames = [frame]
+                else:
+                    frames = []
+                    for frame in final.iter_frames(): frames.append(frame)
                 video_tensor = torch.from_numpy(np.array(frames)).float() / 255.0 if frames else torch.zeros(1, 512, 512, 3)
 
                 audio_out = None
@@ -407,7 +448,7 @@ class DirectorFinalRender:
         return (torch.zeros(1, 64, 64, 3), None)
 
 # ==========================================
-# 🆕 字典转文本 (保留工具)
+# 🆕 字典转文本
 # ==========================================
 class DirectorDictToString:
     @classmethod
@@ -417,18 +458,16 @@ class DirectorDictToString:
     RETURN_NAMES = ("Formatted_Text",)
     FUNCTION = "convert"
     CATEGORY = "Novel Director/Logic"
-
     def convert(self, data_dict):
         try:
-            if not isinstance(data_dict, dict): return (str(data_dict),)
-            text = json.dumps(data_dict, indent=4, ensure_ascii=False)
-            return (text,)
+            return (json.dumps(data_dict, indent=4, ensure_ascii=False),)
         except: return ("{}",)
 
 NODE_CLASS_MAPPINGS = {
     "DirectorCasting": DirectorCasting,
     "DirectorAudioScriptLoader": DirectorAudioScriptLoader,
     "DirectorVisualStoryboardLoader": DirectorVisualStoryboardLoader,
+    "DirectorVideoPromptLoader": DirectorVideoPromptLoader,
     "DirectorSceneIterator": DirectorSceneIterator,
     "DirectorAudioFrameCalc": DirectorAudioFrameCalc,
     "DirectorOrderGate": DirectorOrderGate,
@@ -441,6 +480,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DirectorCasting": "🎬 1. 演员选角 (6人版)",
     "DirectorAudioScriptLoader": "🎙️ 2A. 有声剧脚本加载 (Audio)",
     "DirectorVisualStoryboardLoader": "🎨 2B. 分镜脚本加载 (Visual)",
+    "DirectorVideoPromptLoader": "📹 2C. 视频提示词加载 (Video)",
     "DirectorSceneIterator": "🔄 3. 场景处理器 (Batch Processor)",
     "DirectorAudioFrameCalc": "⏱️ 3B. 时长计算器 (Calc)",
     "DirectorOrderGate": "🚦 强行流控门 (Order Gate)",
