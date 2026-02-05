@@ -1,269 +1,450 @@
-import json
 import torch
+import json
 import re
-import torch.nn.functional as F
+import os
+import numpy as np
+import soundfile as sf
+import folder_paths
+from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, VideoFileClip
 
-class ScriptJSONParser:
-    """
-    节点1：剧本JSON解析器 (指令前置优化版)
-    """
+# ==========================================
+# 1. 演员选角 (Casting) - 6人版
+# ==========================================
+class DirectorCasting:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {},
+            "optional": {
+                "prev_cast_dict": ("DICT",),
+                "char1_name": ("STRING", {"default": "", "multiline": False, "placeholder": "Role Name 1"}),
+                "char1_img": ("IMAGE",),
+                "char2_name": ("STRING", {"default": "", "multiline": False, "placeholder": "Role Name 2"}),
+                "char2_img": ("IMAGE",),
+                "char3_name": ("STRING", {"default": "", "multiline": False, "placeholder": "Role Name 3"}),
+                "char3_img": ("IMAGE",),
+                "char4_name": ("STRING", {"default": "", "multiline": False, "placeholder": "Role Name 4"}),
+                "char4_img": ("IMAGE",),
+                "char5_name": ("STRING", {"default": "", "multiline": False, "placeholder": "Role Name 5"}),
+                "char5_img": ("IMAGE",),
+                "char6_name": ("STRING", {"default": "", "multiline": False, "placeholder": "Role Name 6"}),
+                "char6_img": ("IMAGE",),
+            }
+        }
+    RETURN_TYPES = ("DICT",)
+    RETURN_NAMES = ("角色名册(Dict)",)
+    FUNCTION = "register_cast"
+    CATEGORY = "Novel Director/1. Pre-Production"
+
+    def register_cast(self, prev_cast_dict=None, **kwargs):
+        cast = prev_cast_dict.copy() if prev_cast_dict else {}
+        for i in range(1, 7):
+            name_key = f"char{i}_name"
+            img_key = f"char{i}_img"
+            name = kwargs.get(name_key)
+            img = kwargs.get(img_key)
+            if name and name.strip() and img is not None:
+                valid_img = img
+                if len(valid_img.shape) == 3: valid_img = valid_img.unsqueeze(0)
+                cast[name.strip()] = valid_img
+        return (cast,)
+
+# ==========================================
+# 2A. 剧本加载 (Audio Script) - 原始列表输出版
+# ==========================================
+class DirectorAudioScriptLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "JSON剧本数据": ("STRING", {"multiline": True, "forceInput": True}), 
+                "audio_json": ("STRING", {"multiline": True, "forceInput": True, "default": ""}),
             }
         }
+    
+    # role_desc_str 现在输出的是原始列表字符串
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "INT", "INT", "DICT", "STRING")
+    RETURN_NAMES = ("角色列表(Role)", "音色提示词(Instruct)", "纯台词(Text)", "总场数", "索引列表(Loop)", "角色字典(Dict)", "角色设定详情(ListString)")
+    OUTPUT_IS_LIST = (True, True, True, False, True, False, False)
+    
+    FUNCTION = "parse_audio_script"
+    CATEGORY = "Novel Director/1. Pre-Production"
 
-    RETURN_TYPES = ("STRING", "STRING", "INT", "INT", "STRING") 
-    RETURN_NAMES = ("人设提示词列表", "基础分镜提示词", "主角索引列表(A)", "配角索引列表(B)", "合成后的中文提示词")
-    OUTPUT_IS_LIST = (True, True, True, True, True) 
-    FUNCTION = "parse_script"
-    CATEGORY = "Novel Director"
-
-    def parse_script(self, JSON剧本数据):
-        char_prompts = []
-        char_names = [] 
-        scene_prompts = []
-        ref_indices_a = []
-        ref_indices_b = []
-        merged_prompts = [] 
-
-        print(f"\n🔵 [Novel Director] 开始解析剧本...")
-
+    def parse_audio_script(self, audio_json):
+        raw = audio_json[0] if isinstance(audio_json, list) else audio_json
         try:
-            # --- 1. 数据清洗 ---
-            raw_text = JSON剧本数据
-            if isinstance(raw_text, list): raw_text = raw_text[0]
-            
-            match = re.search(r"\{.*\}", raw_text, re.DOTALL)
-            clean_text = match.group(0) if match else raw_text
-            clean_text = clean_text.replace("```json", "").replace("```", "")
-            
-            try: 
-                data = json.loads(clean_text)
-            except: 
-                print("JSON解析失败，尝试宽松模式...")
-                data = {}
-
-            # --- 2. 提取人设 ---
-            c_list = data.get("character_ref_prompts") or data.get("character_list") or []
-            for idx, item in enumerate(c_list):
-                prompt = item.get("prompt", "") if isinstance(item, dict) else item
-                name = item.get("name", f"Char_{idx}") if isinstance(item, dict) else item[:10]
-                char_prompts.append(prompt)
-                char_names.append(name)
-                print(f"  👤 角色[{idx}]: {name}")
-
-            # --- 3. 提取分镜 ---
-            s_list = data.get("storyboard_list") or data.get("storyboard") or []
-            
-            for s_idx, item in enumerate(s_list):
-                if isinstance(item, dict):
-                    base_prompt = item.get("prompt", "")
-                    scene_prompts.append(base_prompt)
-                    
-                    target_obj = item.get("main_character", "")
-                    explicit_idx = item.get("ref_image_index", None)
-                    
-                    found_indices = []
-                    if explicit_idx is not None:
-                        if isinstance(explicit_idx, list): found_indices = [int(x) for x in explicit_idx]
-                        else: 
-                            try: found_indices = [int(explicit_idx)]
-                            except: pass
-                    
-                    if not found_indices and target_obj:
-                        targets_to_check = target_obj if isinstance(target_obj, list) else [target_obj]
-                        detected = []
-                        for t_str in targets_to_check:
-                            t_str = str(t_str).lower().strip()
-                            if t_str == "none": continue
-                            for idx, registered_name in enumerate(char_names):
-                                reg_clean = registered_name.lower().strip()
-                                if reg_clean and (reg_clean in t_str or t_str in reg_clean):
-                                    if idx not in detected: detected.append(idx)
-                        found_indices = detected
-
-                    idx_a = found_indices[0] if len(found_indices) > 0 else -1
-                    idx_b = found_indices[1] if len(found_indices) > 1 else -1
-                    
-                    ref_indices_a.append(idx_a)
-                    ref_indices_b.append(idx_b)
-
-                    # --- 4. 生成前置指令 ---
-                    instruction = ""
-                    if idx_a != -1 and idx_b != -1:
-                        name_a = char_names[idx_a]
-                        name_b = char_names[idx_b]
-                        instruction = f"画面包含两人，请严格参考图一的角色【{name_a}】和图二的角色【{name_b}】，保持人物特征一致"
-                    elif idx_a != -1:
-                        name_a = char_names[idx_a]
-                        instruction = f"画面包含一人，请严格参考图一的角色【{name_a}】，保持人物特征一致"
-                    elif idx_b != -1:
-                        name_b = char_names[idx_b]
-                        instruction = f"画面包含一人，请严格参考图二的角色【{name_b}】，保持人物特征一致"
-                    else:
-                        instruction = "高质量场景，无人"
-
-                    final_prompt = f"{instruction}。{base_prompt}"
-                    merged_prompts.append(final_prompt)
-                    
-                    print(f"  🎬 分镜[{s_idx+1}] 提示词生成完毕")
-
-            # --- 5. 补齐 ---
-            target_len = len(scene_prompts)
-            if len(ref_indices_a) < target_len: ref_indices_a.extend([-1] * (target_len - len(ref_indices_a)))
-            if len(ref_indices_b) < target_len: ref_indices_b.extend([-1] * (target_len - len(ref_indices_b)))
-
-            return (char_prompts, scene_prompts, ref_indices_a, ref_indices_b, merged_prompts)
-
+            match = re.search(r"\{.*\}", raw, re.DOTALL)
+            clean = match.group(0).replace("```json", "").replace("```", "") if match else raw
+            clean = clean.replace("\\\n", "\\n")
+            data = json.loads(clean)
         except Exception as e:
-            print(f"🔴 解析严重错误: {e}")
-            return (["Error"], ["Error"], [-1], [-1], ["Error"])
+            print(f"❌ JSON Parse Error: {e}")
+            return (["Err"], ["Err"], ["JSON Error"], 1, [0], {}, "[]")
 
-
-class BatchImageSelector:
-    """
-    节点2：FLUX专用图片提取器 (修复报错版)
-    修复了输入为空时导致 'NoneType object has no attribute shape' 的问题。
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "所有角色图Batch": ("IMAGE", ), 
-                "索引列表": ("INT", {"forceInput": True}),
-            }
-        }
-
-    RETURN_TYPES = ("IMAGE", )
-    RETURN_NAMES = ("VAE参考图", )
-    INPUT_IS_LIST = True 
-    OUTPUT_IS_LIST = (True,) 
-    FUNCTION = "select_images"
-    CATEGORY = "Novel Director"
-
-    def select_images(self, 所有角色图Batch, 索引列表):
-        output_images = []
-        raw_input = 所有角色图Batch
-        image_pool = []
+        # 1. 获取原始角色列表数据
+        role_list_data = data.get("role_list", [])
         
-        # --- 1. 安全整理图片池 (防爆逻辑) ---
-        if raw_input is None:
-            print("⚠️ [BatchImageSelector] 警告: 未检测到输入图片!")
-        elif isinstance(raw_input, list):
-            for i, item in enumerate(raw_input):
-                if item is None: continue # 跳过空数据
-                try:
-                    if hasattr(item, "shape") and len(item.shape) == 4: 
-                        for j in range(item.shape[0]): image_pool.append(item[j])
-                    elif hasattr(item, "shape"):
-                        image_pool.append(item)
-                except Exception as e:
-                    print(f"⚠️ 读取第 {i} 张图时出错: {e}")
-        else:
-            if hasattr(raw_input, "shape"):
-                for i in range(raw_input.shape[0]): image_pool.append(raw_input[i])
+        # 💡 这里修改为直接输出 Python 列表的字符串形式
+        # 例如: "[{'name': '旁白', 'instruct': '...', 'text': '...'}]"
+        # 使用 str() 会生成单引号格式，正好符合你的需求
+        role_desc_str = str(role_list_data)
 
-        print(f"🔵 [BatchImageSelector] 成功加载 {len(image_pool)} 张角色参考图")
+        # 2. 建立映射表供后续处理使用
+        role_map = {} 
+        for r in role_list_data:
+            r_name = r.get("name", "").strip()
+            r_inst = r.get("instruct", "")
+            if r_name: role_map[r_name] = r_inst
+        
+        # 3. 解析剧本正文
+        juben_text = data.get("juben", "")
+        raw_lines = [l.strip() for l in juben_text.split('\n') if l.strip()]
 
-        # --- 2. 确定基准尺寸 ---
-        target_h, target_w = 1024, 1024
-        if len(image_pool) > 0:
-            target_h, target_w = image_pool[0].shape[0], image_pool[0].shape[1]
+        out_roles, out_instructs, out_texts = [], [], []
+        default_instruct = "语速中等，清晰自然的朗读声。"
 
-        # --- 3. 提取并处理 ---
-        for idx in 索引列表:
-            try: idx = int(idx)
-            except: idx = -1
-            
-            target_img = None
-            
-            # 如果索引无效，或者图池是空的 -> 给全黑图
-            if idx < 0 or idx >= len(image_pool):
-                target_img = torch.zeros((1, target_h, target_w, 3), dtype=torch.float32)
+        for line in raw_lines:
+            if "：" in line: line = line.replace("：", ":")
+            parts = line.split(":", 1)
+            if len(parts) == 2:
+                r_name = parts[0].strip()
+                text_content = parts[1].strip()
+                r_instruct = role_map.get(r_name, default_instruct)
+                out_roles.append(r_name)
+                out_texts.append(text_content)
+                out_instructs.append(r_instruct)
             else:
-                img = image_pool[idx]
-                # 再次检查取出来的图是否有效
-                if img is None:
-                     target_img = torch.zeros((1, target_h, target_w, 3), dtype=torch.float32)
-                else:
-                    # 尺寸对齐
-                    try:
-                        if img.shape[0] != target_h or img.shape[1] != target_w:
-                            img_permuted = img.permute(2, 0, 1).unsqueeze(0)
-                            img_resized = F.interpolate(img_permuted, size=(target_h, target_w), mode="bilinear", align_corners=False)
-                            target_img = img_resized.permute(0, 2, 3, 1)
-                        else:
-                            target_img = img.unsqueeze(0)
-                    except:
-                        # 万一缩放报错，给黑图兜底
-                        target_img = torch.zeros((1, target_h, target_w, 3), dtype=torch.float32)
+                out_roles.append("旁白")
+                out_texts.append(line)
+                out_instructs.append(role_map.get("旁白", default_instruct))
+
+        count = len(out_texts)
+        if count == 0:
+            return (["Empty"], ["Empty"], ["No Content"], 1, [0], {}, "[]")
             
-            output_images.append(target_img)
+        print(f"🎙️ [Script] 解析成功: {count} 行 | 角色库: {len(role_map)} 人")
+        return (out_roles, out_instructs, out_texts, count, list(range(count)), role_map, role_desc_str)
 
-        return (output_images, )
-
-
-class DynamicCharMask:
-    """
-    节点3：存在遮罩生成器
-    """
+# ==========================================
+# 2B. 分镜加载 (Visual Storyboard)
+# ==========================================
+class DirectorVisualStoryboardLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "参考图Batch": ("IMAGE", ), 
-                "索引列表": ("INT", {"forceInput": True}),
+                "visual_json": ("STRING", {"multiline": True, "forceInput": True, "default": ""}),
+                "cast_dict": ("DICT",), 
             }
         }
+    RETURN_TYPES = ("STRING", "IMAGE", "IMAGE")
+    RETURN_NAMES = ("画面提示词列表", "角色1图列表", "角色2图列表")
+    OUTPUT_IS_LIST = (True, True, True)
+    FUNCTION = "parse_visual_script"
+    CATEGORY = "Novel Director/1. Pre-Production"
 
-    RETURN_TYPES = ("MASK", )
-    RETURN_NAMES = ("VAE遮罩", )
-    INPUT_IS_LIST = True 
-    OUTPUT_IS_LIST = (True,) 
-    FUNCTION = "generate_mask"
-    CATEGORY = "Novel Director"
-
-    def generate_mask(self, 参考图Batch, 索引列表):
-        output_masks = []
-        
-        # 安全获取参考尺寸
-        H, W = 1024, 1024
+    def parse_visual_script(self, visual_json, cast_dict):
+        raw = visual_json[0] if isinstance(visual_json, list) else visual_json
+        empty_img = torch.zeros((1, 512, 512, 3))
         try:
-            ref_img_list = 参考图Batch[0] if isinstance(参考图Batch, list) else 参考图Batch
-            if isinstance(ref_img_list, list) and len(ref_img_list) > 0: 
-                ref_img = ref_img_list[0]
-            else: 
-                ref_img = ref_img_list
-            
-            if ref_img is not None and hasattr(ref_img, "shape"):
-                if len(ref_img.shape) == 4: _, H, W, _ = ref_img.shape
-                else: H, W, _ = ref_img.shape
+            match = re.search(r"\{.*\}", raw, re.DOTALL)
+            clean = match.group(0).replace("```json", "").replace("```", "") if match else raw
+            data = json.loads(clean)
         except:
-            pass
+            return (["Error"], [empty_img], [empty_img])
+
+        story_list = data.get("storyboard_list", [])
+        prompt_list, img1_list, img2_list = [], [], []
+
+        for item in story_list:
+            prompt_list.append(item.get("prompt", "Scene"))
+            chars = item.get("main_character", [])
+            if isinstance(chars, str): chars = [c.strip() for c in chars.split(",") if c.strip()]
+            i1, i2 = empty_img, empty_img
+            if len(chars) > 0:
+                t = str(chars[0]).strip()
+                for n, img in cast_dict.items():
+                    if t in n or n in t: i1 = img; break
+            if len(chars) > 1:
+                t = str(chars[1]).strip()
+                for n, img in cast_dict.items():
+                    if t in n or n in t: i2 = img; break
+            img1_list.append(i1)
+            img2_list.append(i2)
+
+        if not prompt_list: return (["Empty"], [empty_img], [empty_img])
+        return (prompt_list, img1_list, img2_list)
+
+# ==========================================
+# 3. 场景处理器 (Iterator)
+# ==========================================
+class DirectorSceneIterator:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "scene_index": ("INT", {"forceInput": True}), 
+                "role_list": ("STRING", {"forceInput": True}),
+                "instruct_list": ("STRING", {"forceInput": True}),
+                "text_list": ("STRING", {"forceInput": True}),
+                "visual_prompts": ("STRING", {"forceInput": True}),
+                "char_img1_list": ("IMAGE", ),
+                "char_img2_list": ("IMAGE", ),
+            }
+        }
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "IMAGE", "IMAGE", "STRING", "INT", "INT")
+    RETURN_NAMES = ("当前Role", "Instruct(含Role)", "Text(含Role)", "当前画面Prompt", "Img1", "Img2", "Filename", "Idx_Current", "Idx_Total")
+    INPUT_IS_LIST = (True, True, True, True, True, True, True)
+    OUTPUT_IS_LIST = (True, True, True, True, True, True, True, True, True)
+    FUNCTION = "process"
+    CATEGORY = "Novel Director/2. Production"
+
+    def process(self, scene_index, role_list, instruct_list, text_list, visual_prompts, char_img1_list, char_img2_list):
+        def to_list(x): return x if isinstance(x, list) else [x]
+        indices, roles, instructs, texts, prompts = to_list(scene_index), to_list(role_list), to_list(instruct_list), to_list(text_list), to_list(visual_prompts)
+        imgs1 = char_img1_list if isinstance(char_img1_list, list) else [char_img1_list]
+        imgs2 = char_img2_list if isinstance(char_img2_list, list) else [char_img2_list]
+        
+        o_role, o_inst, o_txt, o_prm = [], [], [], []
+        o_i1, o_i2, o_fn, o_idx, o_tot = [], [], [], [], []
+        
+        num_texts = len(texts)
+        num_total = len(indices)
+
+        for i in indices:
+            idx = int(i)
+            t_idx = idx if idx < num_texts else -1
+            v_idx = idx % len(prompts) if len(prompts) > 0 else 0
+            im1_idx = idx % len(imgs1) if len(imgs1) > 0 else 0
+            im2_idx = idx % len(imgs2) if len(imgs2) > 0 else 0
             
-        device = torch.device("cpu") # 默认
+            raw_role = roles[t_idx]
+            final_text = f"{raw_role}: {texts[t_idx]}"
+            final_inst = f"{raw_role}: {instructs[t_idx]}"
 
-        for idx in 索引列表:
-            idx = int(idx)
-            if idx == -1:
-                mask = torch.zeros((H, W), dtype=torch.float32, device=device)
-            else:
-                mask = torch.ones((H, W), dtype=torch.float32, device=device)
-            output_masks.append(mask)
+            o_role.append(raw_role)
+            o_inst.append(final_inst)
+            o_txt.append(final_text)
+            o_prm.append(prompts[v_idx])
+            o_i1.append(imgs1[im1_idx])
+            o_i2.append(imgs2[im2_idx])
+            o_fn.append(f"Scene_{idx:03d}")
+            o_idx.append(idx)
+            o_tot.append(num_total)
 
-        return (output_masks, )
+        print(f"🔄 [Processor] Batch {num_total} Ready.")
+        return (o_role, o_inst, o_txt, o_prm, o_i1, o_i2, o_fn, o_idx, o_tot)
 
-NODE_CLASS_MAPPINGS = { 
-    "ScriptJSONParser": ScriptJSONParser, 
-    "BatchImageSelector": BatchImageSelector,
-    "DynamicCharMask": DynamicCharMask
+# ==========================================
+# 3B. 时长计算器
+# ==========================================
+class DirectorAudioFrameCalc:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "audio": ("*", ), 
+                "fps": ("INT", {"default": 24}),
+                "min_frames": ("INT", {"default": 16}),
+            }
+        }
+    RETURN_TYPES = ("INT", "STRING")
+    RETURN_NAMES = ("Frames", "Debug_Info")
+    FUNCTION = "calc"
+    CATEGORY = "Novel Director/2. Production"
+
+    def calc(self, audio, fps, min_frames):
+        aud = audio[0] if isinstance(audio, list) else audio
+        dur = 5.0
+        if isinstance(aud, str) and os.path.exists(aud):
+            try: dur = sf.info(aud).duration
+            except: pass
+        elif isinstance(aud, dict) and 'waveform' in aud:
+            w = aud['waveform']
+            if w.dim()==3: w=w.squeeze(0)
+            dur = w.shape[-1] / aud['sample_rate']
+        
+        frames = int(dur * fps)
+        final_frames = max(frames, min_frames)
+        return (final_frames, f"🎞️ {final_frames} frames ({dur:.2f}s) | FPS:{fps}")
+
+# ==========================================
+# 4A. 红绿灯
+# ==========================================
+class DirectorOrderGate:
+    @classmethod
+    def INPUT_TYPES(s):
+        return { "required": { "wait_for": ("*",), "pass_data": ("*",), } }
+    RETURN_TYPES = ("*",) 
+    RETURN_NAMES = ("data_output",)
+    FUNCTION = "gate"
+    CATEGORY = "Novel Director/Logic"
+    def gate(self, wait_for, pass_data): return (pass_data,)
+
+# ==========================================
+# 4B. 实时存档 (Saver)
+# ==========================================
+class DirectorStreamSaver:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "video": ("IMAGE", ),
+                "audio": ("*", ), 
+                "filename_prefix": ("STRING", {"default": "scene"}),
+                "idx_current": ("INT", {"forceInput": True}),
+                "idx_total": ("INT", {"forceInput": True}),
+                "fps": ("INT", {"default": 24}),
+            }
+        }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("Manifest_Path",)
+    OUTPUT_NODE = True
+    FUNCTION = "save_scene"
+    CATEGORY = "Novel Director/3. Post-Production"
+
+    def save_scene(self, video, audio, filename_prefix, idx_current, idx_total, fps):
+        out_dir = os.path.join(folder_paths.get_output_directory(), "Novel_Project")
+        os.makedirs(out_dir, exist_ok=True)
+        manifest_path = os.path.join(out_dir, "manifest.txt")
+        
+        curr_idx = idx_current[0] if isinstance(idx_current, list) else idx_current
+        if curr_idx == 0 and os.path.exists(manifest_path):
+            try: os.remove(manifest_path)
+            except: pass
+
+        curr_video = video[0] if isinstance(video, list) else video
+        curr_audio = audio[0] if isinstance(audio, list) else audio
+        prefix = filename_prefix[0] if isinstance(filename_prefix, list) else filename_prefix
+        
+        file_name = f"{prefix}.mp4"
+        full_path = os.path.join(out_dir, file_name)
+
+        import time
+        ts = int(time.time() * 1000)
+        temp_audio = os.path.join(out_dir, f"temp_{ts}.wav")
+        audio_ready = False
+        
+        try:
+            if isinstance(curr_audio, str) and os.path.exists(curr_audio):
+                data, sr = sf.read(curr_audio)
+                sf.write(temp_audio, data, sr)
+                audio_ready = True
+            elif isinstance(curr_audio, dict) and 'waveform' in curr_audio:
+                w = curr_audio['waveform'].squeeze(0)
+                if w.shape[0] > w.shape[1]: w = w.t()
+                sf.write(temp_audio, w.cpu().numpy().T, curr_audio['sample_rate'])
+                audio_ready = True
+        except: pass
+
+        v_np = (curr_video.cpu().numpy() * 255).astype(np.uint8)
+        frames = [v_np[i] for i in range(v_np.shape[0])] if len(v_np.shape)==4 else [v_np]
+        
+        try:
+            clip = ImageSequenceClip(frames, fps=fps)
+            if audio_ready:
+                au_clip = AudioFileClip(temp_audio)
+                clip = clip.set_audio(au_clip.set_duration(clip.duration))
+            clip.write_videofile(full_path, fps=fps, codec="libx264", audio_codec="aac", preset="ultrafast", logger=None)
+            print(f"💾 Scene {curr_idx} Saved")
+        except Exception as e:
+            print(f"❌ Save Error: {e}")
+
+        with open(manifest_path, "a", encoding="utf-8") as f:
+            f.write(full_path + "\n")
+        if os.path.exists(temp_audio): os.remove(temp_audio)
+        return (manifest_path,)
+
+# ==========================================
+# 5. 最终合并
+# ==========================================
+class DirectorFinalRender:
+    @classmethod
+    def INPUT_TYPES(s):
+        return { "required": { "manifest_paths_list": ("STRING", {"forceInput": True}), } }
+    RETURN_TYPES = ("IMAGE", "AUDIO")
+    RETURN_NAMES = ("Final_Image", "Final_Audio")
+    OUTPUT_NODE = True
+    INPUT_IS_LIST = (True,)
+    FUNCTION = "render_all"
+    CATEGORY = "Novel Director/3. Post-Production"
+
+    def render_all(self, manifest_paths_list):
+        print("🎬 [FinalRender] Processing...")
+        if not manifest_paths_list: return (torch.zeros(1, 64, 64, 3), None)
+        manifest_path = manifest_paths_list[0]
+        if not os.path.exists(manifest_path): return (torch.zeros(1, 64, 64, 3), None)
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            lines = [l.strip() for l in f.readlines() if l.strip()]
+        video_files = list(dict.fromkeys(lines))
+        if not video_files: return (torch.zeros(1, 64, 64, 3), None)
+
+        out_dir = os.path.dirname(manifest_path)
+        final_path = os.path.join(out_dir, "Final_Movie_Full.mp4")
+
+        try:
+            clips = []
+            for vf in video_files:
+                if os.path.exists(vf): clips.append(VideoFileClip(vf))
+            if clips:
+                final = concatenate_videoclips(clips, method="compose")
+                final.write_videofile(final_path, fps=24, codec="libx264", audio_codec="aac", logger=None)
+                
+                frames = []
+                for frame in final.iter_frames(): frames.append(frame)
+                video_tensor = torch.from_numpy(np.array(frames)).float() / 255.0 if frames else torch.zeros(1, 512, 512, 3)
+
+                audio_out = None
+                if final.audio:
+                    sr = 44100
+                    audio_arr = final.audio.to_soundarray(fps=sr)
+                    if audio_arr is not None:
+                        waveform = torch.from_numpy(audio_arr.T).float().unsqueeze(0)
+                        audio_out = {"waveform": waveform, "sample_rate": sr}
+                for c in clips: c.close()
+                final.close()
+                return (video_tensor, audio_out)
+        except Exception: pass
+        return (torch.zeros(1, 64, 64, 3), None)
+
+# ==========================================
+# 🆕 字典转文本 (保留工具)
+# ==========================================
+class DirectorDictToString:
+    @classmethod
+    def INPUT_TYPES(s):
+        return { "required": { "data_dict": ("DICT",), } }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("Formatted_Text",)
+    FUNCTION = "convert"
+    CATEGORY = "Novel Director/Logic"
+
+    def convert(self, data_dict):
+        try:
+            if not isinstance(data_dict, dict): return (str(data_dict),)
+            text = json.dumps(data_dict, indent=4, ensure_ascii=False)
+            return (text,)
+        except: return ("{}",)
+
+NODE_CLASS_MAPPINGS = {
+    "DirectorCasting": DirectorCasting,
+    "DirectorAudioScriptLoader": DirectorAudioScriptLoader,
+    "DirectorVisualStoryboardLoader": DirectorVisualStoryboardLoader,
+    "DirectorSceneIterator": DirectorSceneIterator,
+    "DirectorAudioFrameCalc": DirectorAudioFrameCalc,
+    "DirectorOrderGate": DirectorOrderGate,
+    "DirectorStreamSaver": DirectorStreamSaver,
+    "DirectorFinalRender": DirectorFinalRender,
+    "DirectorDictToString": DirectorDictToString
 }
 
-NODE_DISPLAY_NAME_MAPPINGS = { 
-    "ScriptJSONParser": "剧本JSON解析器 (Novel)", 
-    "BatchImageSelector": "按索引提取参考图 (FLUX VAE版)",
-    "DynamicCharMask": "生成角色存在遮罩 (Novel)"
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "DirectorCasting": "🎬 1. 演员选角 (6人版)",
+    "DirectorAudioScriptLoader": "🎙️ 2A. 有声剧脚本加载 (Audio)",
+    "DirectorVisualStoryboardLoader": "🎨 2B. 分镜脚本加载 (Visual)",
+    "DirectorSceneIterator": "🔄 3. 场景处理器 (Batch Processor)",
+    "DirectorAudioFrameCalc": "⏱️ 3B. 时长计算器 (Calc)",
+    "DirectorOrderGate": "🚦 强行流控门 (Order Gate)",
+    "DirectorStreamSaver": "💾 4. 实时存档 (Saver)",
+    "DirectorFinalRender": "🎞️ 5. 最终合并 (Render)",
+    "DirectorDictToString": "🔧 字典转文本 (Dict To String)"
 }
