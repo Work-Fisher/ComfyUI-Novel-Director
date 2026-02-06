@@ -1,4 +1,11 @@
-moviepy
+# 核心视频处理库 (锁定1.x版本以适配代码)
+moviepy<2.0.0
+
+# 音频处理库
 soundfile
+
+# 数值计算 (ComfyUI通常自带，但为了保险加上)
 numpy
-torch
+
+# 确保 FFmpeg 二进制文件存在
+imageio-ffmpeg
