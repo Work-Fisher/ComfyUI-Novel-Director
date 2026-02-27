@@ -1,11 +1,17 @@
-# 核心视频处理库 (锁定1.x版本以适配代码)
-moviepy<2.0.0
+# === 核心视频处理库 ===
+# 使用 1.0.3 版本以确保兼容新版 tqdm，同时保持代码语法不变
+moviepy==1.0.3
 
-# 音频处理库
-soundfile
+# === 核心音频处理库 ===
+# 用于读取和写入 wav 文件
+soundfile>=0.12.1
 
-# 数值计算 (ComfyUI通常自带，但为了保险加上)
-numpy
+# === 依赖库修正 ===
+# 确保 imageio 版本足够新，避免 ffmpeg 调用问题
+imageio>=2.9.0
 
-# 确保 FFmpeg 二进制文件存在
-imageio-ffmpeg
+# 确保 tqdm 版本符合 ComfyUI 要求 (通常 ComfyUI 已安装，这里作为保险)
+tqdm>=4.66.0
+
+# 装饰器库，moviepy 的依赖
+decorator>=4.4.2
